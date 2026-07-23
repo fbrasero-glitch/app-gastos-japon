@@ -2,27 +2,30 @@ import React, { useState } from 'react';
 import { useExpenses } from '../context/ExpensesContext';
 import { calculateBalances, simplifyDebts } from '../utils/debtCalculator';
 import { formatEUR } from '../utils/currency';
-import { Scale, ArrowRight, CheckCircle2, Building2, User, Handshake, Sparkles } from 'lucide-react';
+import { Scale, ArrowRight, CheckCircle2, Building2, User, Handshake, Sparkles, History, ChevronDown, ChevronUp } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export function DebtBalances() {
   const { expenses, members, units, exchangeRate, settleDebt } = useExpenses();
   const [viewLevel, setViewLevel] = useState('units'); // 'units' | 'members'
+  const [showHistory, setShowHistory] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // Excluir gastos que ya hayan sido saldados si se desea ver solo lo pendiente
-  const activeExpenses = expenses.filter(exp => !exp.isSettlement);
+  // IMPORTANTE: Pasamos TODOS los gastos (incluidas las liquidaciones/pagos saldados)
+  // para que cualquier pago individual reste o sume de forma matemáticamente exacta
+  // en los balances de cada integrante y en el balance de su unidad familiar.
+  const { memberBalances, unitBalances } = calculateBalances(expenses, members, units, exchangeRate);
 
-  // Calcular saldos
-  const { memberBalances, unitBalances } = calculateBalances(activeExpenses, members, units, exchangeRate);
-
-  // Entidades a simplificar según el nivel seleccionado
+  // Entidades a simplificar según el nivel seleccionado (Familia vs Integrante)
   const entitiesToSimplify = viewLevel === 'units'
     ? Object.values(unitBalances).map(u => ({ id: u.unitId, name: u.unitName, netEUR: u.netEUR }))
     : Object.values(memberBalances).map(m => ({ id: m.memberId, name: m.memberName, netEUR: m.netEUR }));
 
-  // Algoritmo de simplificación
+  // Algoritmo de simplificación de deudas pendientes
   const pendingDebts = simplifyDebts(entitiesToSimplify);
+
+  // Lista de pagos saldados registrados previamente
+  const settledHistory = expenses.filter(exp => exp.isSettlement);
 
   const handleSettle = (debt) => {
     settleDebt({
@@ -37,9 +40,12 @@ export function DebtBalances() {
       confetti({ particleCount: 70, spread: 60, origin: { y: 0.7 } });
     } catch (e) {}
 
-    setSuccessMessage(`¡Cuenta saldada! ${debt.fromName} ha pagado ${formatEUR(debt.amountEUR)} a ${debt.toName}.`);
-    setTimeout(() => setSuccessMessage(null), 3500);
+    setSuccessMessage(`¡Liquidación registrada! ${debt.fromName} ha pagado ${formatEUR(debt.amountEUR)} a ${debt.toName}. El importe se ha restado del balance familiar correspondiente.`);
+    setTimeout(() => setSuccessMessage(null), 4000);
   };
+
+  const getMemberName = (id) => members.find(m => m.id === id)?.name || id;
+  const getMemberAvatar = (id) => members.find(m => m.id === id)?.avatar || '👤';
 
   return (
     <div className="space-y-5 pb-24 max-w-xl mx-auto px-4 py-4 animate-in fade-in duration-200">
@@ -47,9 +53,11 @@ export function DebtBalances() {
       {/* Encabezado */}
       <div>
         <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-          <span>⚖️ Cuentas Pendientes</span>
+          <span>⚖️ Cuentas Pendientes y Liquidación</span>
         </h2>
-        <p className="text-xs text-slate-400">Quién debe a quién y liquidación rápida en 1 clic</p>
+        <p className="text-xs text-slate-400">
+          Los pagos saldados individuales se restan automáticamente del balance familiar
+        </p>
       </div>
 
       {/* Alerta de Deuda Saldada */}
@@ -82,23 +90,23 @@ export function DebtBalances() {
           }`}
         >
           <User className="w-4 h-4" />
-          <span>Por Integrante</span>
+          <span>Por Integrante Individual</span>
         </button>
       </div>
 
-      {/* LISTA LIMPIA DE DEUDAS PENDIENTES */}
+      {/* LISTA DE DEUDAS PENDIENTES */}
       {pendingDebts.length === 0 ? (
-        <div className="text-center py-12 bg-slate-900/60 border border-slate-800 rounded-3xl p-8 space-y-3 shadow-xl">
+        <div className="text-center py-10 bg-slate-900/60 border border-slate-800 rounded-3xl p-8 space-y-3 shadow-xl">
           <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-          <h3 className="text-base font-black text-slate-100">¡Todas las cuentas están saldadas! 🎉</h3>
+          <h3 className="text-base font-black text-slate-100">¡Cuentas saldadas al 100%! 🎉</h3>
           <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
-            No hay deudas pendientes en este momento. Al añadir nuevos gastos compartidos, aparecerán aquí automáticamente.
+            No hay deudas pendientes en este nivel. Todos los saldos individuales y familiares se encuentran ajustados.
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1">
-            {pendingDebts.length} {pendingDebts.length === 1 ? 'cuenta pendiente por saldar' : 'cuentas pendientes por saldar'}
+            {pendingDebts.length} {pendingDebts.length === 1 ? 'cuenta pendiente' : 'cuentas pendientes'}
           </div>
 
           {pendingDebts.map((debt, idx) => (
@@ -132,6 +140,41 @@ export function DebtBalances() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* HISTORIAL DESPLEGABLE DE PAGOS SALDADOS (No se eliminan, quedan registrados) */}
+      {settledHistory.length > 0 && (
+        <div className="pt-2">
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="w-full flex items-center justify-between p-3 rounded-2xl bg-slate-900/70 border border-slate-800 text-xs font-bold text-slate-300 hover:bg-slate-850 transition"
+          >
+            <span className="flex items-center gap-2">
+              <History className="w-4 h-4 text-emerald-400" />
+              <span>Registro de Pagos Saldados ({settledHistory.length})</span>
+            </span>
+            {showHistory ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+
+          {showHistory && (
+            <div className="space-y-2 pt-2 animate-in fade-in duration-150">
+              {settledHistory.map(settle => (
+                <div key={settle.id} className="bg-slate-950 p-3 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🤝</span>
+                    <div>
+                      <span className="font-bold text-slate-200 block">{settle.notes || settle.title}</span>
+                      <span className="text-[10px] text-slate-500">
+                        {new Date(settle.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} · Pagado por {getMemberAvatar(settle.payerId)} {getMemberName(settle.payerId)}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="font-extrabold text-emerald-400 text-xs">{formatEUR(settle.amountEUR)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
