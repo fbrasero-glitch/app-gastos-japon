@@ -8,4 +8,5 @@ export default defineConfig({
     react(),
     tailwindcss()
   ],
+  base: './', // Permite que funcione en GitHub Pages con rutas relativas
 })
