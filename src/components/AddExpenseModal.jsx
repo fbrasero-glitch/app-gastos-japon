@@ -2,25 +2,29 @@ import React, { useState } from 'react';
 import { useExpenses } from '../context/ExpensesContext';
 import { CATEGORIES } from '../data/initialData';
 import { convertJPYToEUR, convertEURToJPY, formatEUR, formatJPY } from '../utils/currency';
-import { Check, Plus, DollarSign, CreditCard, Coins, Calendar, FileText, Users, User, HeartHandshake } from 'lucide-react';
+import { Check, Plus, CreditCard, Users, Globe, Home, Lock, Eye } from 'lucide-react';
 
 export function AddExpenseForm({ onComplete }) {
-  const { members, units, exchangeRate, addExpense, setActiveTab } = useExpenses();
+  const { members, units, currentMemberId, exchangeRate, addExpense, setActiveTab } = useExpenses();
+
+  const activeMember = members.find(m => m.id === currentMemberId);
+  const activeUnit = units.find(u => u.id === activeMember?.unitId);
 
   // Estado del formulario
   const [title, setTitle] = useState('');
   const [amountOriginal, setAmountOriginal] = useState('');
-  const [currency, setCurrency] = useState('JPY'); // 'JPY' | 'EUR'
-  const [payerId, setPayerId] = useState(members[0]?.id || 'm1');
-  const [paymentMethod, setPaymentMethod] = useState('cash_jpy'); // 'card' | 'cash_jpy' | 'cash_eur'
+  const [currency, setCurrency] = useState('JPY');
+  const [payerId, setPayerId] = useState(currentMemberId || members[0]?.id || 'm1');
+  const [paymentMethod, setPaymentMethod] = useState('cash_jpy');
   const [category, setCategory] = useState('Comida');
+  const [visibility, setVisibility] = useState('public'); // 'public' | 'family' | 'private'
   const [notes, setNotes] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Selección de Beneficiarios
-  const [beneficiaries, setBeneficiaries] = useState(members.map(m => m.id)); // Por defecto todos (8)
+  const [beneficiaries, setBeneficiaries] = useState(members.map(m => m.id));
 
-  // Título rápido de categorías (Preset suggestions)
+  // Título rápido de categorías (Presets)
   const quickTitles = {
     Comida: ['Cena Ramen Ichiran', 'Almuerzo Sushi', 'Desayuno Conbini (7-Eleven)', 'Cena Izakaya', 'Matcha & Sweet Treats'],
     Transporte: ['Pase Metro Suica / Pasmo', 'Billete Shinkansen', 'Taxi a Estación', 'Buses locales Kioto'],
@@ -30,12 +34,10 @@ export function AddExpenseForm({ onComplete }) {
     Varios: ['Consigna Maletas', 'Agua y Bebidas', 'Sim Card / Wifi Pocket']
   };
 
-  // Cálculo en vivo de conversión
   const rawNum = parseFloat(amountOriginal) || 0;
   const equivalentEUR = currency === 'JPY' ? convertJPYToEUR(rawNum, exchangeRate) : rawNum;
   const equivalentJPY = currency === 'EUR' ? convertEURToJPY(rawNum, exchangeRate) : rawNum;
 
-  // Manejadores de Presets de Beneficiarios
   const selectAllBeneficiaries = () => {
     setBeneficiaries(members.map(m => m.id));
   };
@@ -45,7 +47,8 @@ export function AddExpenseForm({ onComplete }) {
   };
 
   const selectMainFamilyOnly = () => {
-    setBeneficiaries(members.filter(m => m.unitId === 'u1').map(m => m.id));
+    const unitMemberIds = members.filter(m => m.unitId === (activeMember?.unitId || 'u1')).map(m => m.id);
+    setBeneficiaries(unitMemberIds);
   };
 
   const toggleBeneficiary = (mId) => {
@@ -71,13 +74,13 @@ export function AddExpenseForm({ onComplete }) {
       payerId,
       paymentMethod,
       category,
+      visibility,
       date: new Date(date).toISOString(),
       splitType: 'equal',
       beneficiaries,
       notes: notes.trim()
     });
 
-    // Resetear o redirigir
     if (onComplete) {
       onComplete();
     } else {
@@ -97,19 +100,77 @@ export function AddExpenseForm({ onComplete }) {
           <p className="text-xs text-slate-400">Imputación en Yenes (JPY) o Euros con conversión instantánea</p>
         </div>
         <div className="text-right">
-          <span className="text-[10px] text-slate-400 block font-medium">Tasa Actual</span>
-          <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-            1€ = {exchangeRate}¥
+          <span className="text-[10px] text-slate-400 block font-medium">Perfil Activo</span>
+          <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+            {activeMember?.avatar} {activeMember?.name}
           </span>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         
-        {/* 1. Categoría y Título */}
+        {/* 👁️ NUEVA SECCIÓN: Nivel de Visibilidad y Privacidad */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-2.5 shadow-lg">
+          <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              <Eye className="w-4 h-4 text-amber-400" />
+              <span>1. Nivel de Visibilidad del Gasto</span>
+            </span>
+            <span className="text-[10px] text-slate-500 font-bold uppercase">{visibility}</span>
+          </label>
+
+          <div className="grid grid-cols-3 gap-2">
+            {/* Público */}
+            <button
+              type="button"
+              onClick={() => setVisibility('public')}
+              className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1 ${
+                visibility === 'public'
+                  ? 'bg-gradient-to-b from-blue-500/20 to-blue-600/10 border-blue-500 text-blue-300 ring-2 ring-blue-500/30 font-bold shadow-md'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Globe className="w-5 h-5 text-blue-400" />
+              <span className="text-xs">🌐 Público</span>
+              <span className="text-[9px] text-slate-500 leading-tight">Grupo Completo</span>
+            </button>
+
+            {/* Familiar */}
+            <button
+              type="button"
+              onClick={() => setVisibility('family')}
+              className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1 ${
+                visibility === 'family'
+                  ? 'bg-gradient-to-b from-emerald-500/20 to-emerald-600/10 border-emerald-500 text-emerald-300 ring-2 ring-emerald-500/30 font-bold shadow-md'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Home className="w-5 h-5 text-emerald-400" />
+              <span className="text-xs">🏠 Familiar</span>
+              <span className="text-[9px] text-slate-500 leading-tight">{activeUnit?.name.split(' ')[0]}</span>
+            </button>
+
+            {/* Privado */}
+            <button
+              type="button"
+              onClick={() => setVisibility('private')}
+              className={`p-3 rounded-xl border text-center transition-all flex flex-col items-center gap-1 ${
+                visibility === 'private'
+                  ? 'bg-gradient-to-b from-purple-500/20 to-purple-600/10 border-purple-500 text-purple-300 ring-2 ring-purple-500/30 font-bold shadow-md'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Lock className="w-5 h-5 text-purple-400" />
+              <span className="text-xs">🔒 Privado</span>
+              <span className="text-[9px] text-slate-500 leading-tight">Solo {activeMember?.name}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. Categoría y Título */}
         <div className="space-y-3">
           <label className="text-xs font-semibold text-slate-300 block uppercase tracking-wider">
-            1. Categoría del Gasto
+            2. Categoría del Gasto
           </label>
           <div className="grid grid-cols-3 gap-2">
             {CATEGORIES.map((cat) => {
@@ -132,7 +193,7 @@ export function AddExpenseForm({ onComplete }) {
             })}
           </div>
 
-          {/* Presets Rápidos según Categoría */}
+          {/* Presets Rápidos */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
             <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">Sugerencias:</span>
             {quickTitles[category]?.map((preset, idx) => (
@@ -158,11 +219,11 @@ export function AddExpenseForm({ onComplete }) {
           />
         </div>
 
-        {/* 2. Importe y Moneda */}
+        {/* 3. Importe y Moneda */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-              2. Importe y Divisa
+              3. Importe y Divisa
             </label>
 
             {/* Toggle JPY / EUR */}
@@ -220,10 +281,10 @@ export function AddExpenseForm({ onComplete }) {
           )}
         </div>
 
-        {/* 3. Pagador y Método de Pago */}
+        {/* 4. Pagador y Método de Pago */}
         <div className="space-y-3">
           <label className="text-xs font-semibold text-slate-300 block uppercase tracking-wider">
-            3. ¿Quién ha pagado?
+            4. ¿Quién ha pagado?
           </label>
 
           {/* Selector de Integrante (Pagador) */}
@@ -292,12 +353,12 @@ export function AddExpenseForm({ onComplete }) {
           </div>
         </div>
 
-        {/* 4. Reparto entre Beneficiarios */}
+        {/* 5. Reparto entre Beneficiarios */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
               <Users className="w-4 h-4 text-red-400" />
-              <span>4. ¿Entre quiénes se reparte?</span>
+              <span>5. ¿Entre quiénes se reparte?</span>
             </label>
             <span className="text-xs font-bold text-slate-400">
               {beneficiaries.length} de {members.length} pax
@@ -332,16 +393,16 @@ export function AddExpenseForm({ onComplete }) {
               type="button"
               onClick={selectMainFamilyOnly}
               className={`py-1.5 px-2 rounded-lg text-xs font-bold border transition ${
-                beneficiaries.length === 4 && beneficiaries.every(id => members.find(m => m.id === id)?.unitId === 'u1')
+                beneficiaries.length === 4
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
               }`}
             >
-              👨‍👩‍👧‍👦 Mi Familia (4)
+              🏠 Mi Unidad ({activeUnit?.name.split(' ')[0]})
             </button>
           </div>
 
-          {/* Grid de Checkboxes por Integrante */}
+          {/* Checkboxes por Integrante */}
           <div className="grid grid-cols-2 gap-2 pt-1">
             {units.map((u) => {
               const unitMembers = members.filter(m => m.unitId === u.id);
@@ -385,7 +446,7 @@ export function AddExpenseForm({ onComplete }) {
             })}
           </div>
 
-          {/* Muestra de cuota por persona */}
+          {/* Cuota por persona */}
           {rawNum > 0 && beneficiaries.length > 0 && (
             <div className="text-center text-xs text-slate-400 pt-1 font-medium">
               Cuota estimada por persona: <span className="font-extrabold text-slate-100">{formatEUR(equivalentEUR / beneficiaries.length)}</span>
@@ -393,7 +454,7 @@ export function AddExpenseForm({ onComplete }) {
           )}
         </div>
 
-        {/* 5. Fecha y Notas opcionales */}
+        {/* 6. Fecha y Notas */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-semibold text-slate-400 block mb-1">Fecha</label>
@@ -422,7 +483,7 @@ export function AddExpenseForm({ onComplete }) {
           className="w-full py-4 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-500 hover:brightness-110 text-white font-extrabold text-base shadow-xl shadow-red-600/30 flex items-center justify-center gap-2 transition active:scale-[0.98]"
         >
           <Plus className="w-5 h-5 stroke-[3]" />
-          <span>Guardar Gasto en el Historial</span>
+          <span>Guardar Gasto ({visibility === 'public' ? '🌐 Público' : visibility === 'family' ? '🏠 Familiar' : '🔒 Privado'})</span>
         </button>
 
       </form>

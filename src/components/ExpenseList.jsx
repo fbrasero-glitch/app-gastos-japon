@@ -2,44 +2,39 @@ import React, { useState } from 'react';
 import { useExpenses } from '../context/ExpensesContext';
 import { CATEGORIES } from '../data/initialData';
 import { formatEUR, formatJPY } from '../utils/currency';
-import { Search, Filter, Trash2, Edit2, ChevronDown, ChevronUp, CreditCard, Calendar, Users, Sparkles, UserCheck } from 'lucide-react';
+import { Search, Trash2, ChevronDown, ChevronUp, UserCheck, Globe, Home, Lock } from 'lucide-react';
 
 export function ExpenseList() {
-  const { expenses, members, units, deleteExpense, filterFamilyOnly, setFilterFamilyOnly } = useExpenses();
+  const { expenses, members, units, currentMemberId, deleteExpense, filterFamilyOnly, setFilterFamilyOnly } = useExpenses();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
-  const [selectedPayer, setSelectedPayer] = useState('ALL');
   const [expandedId, setExpandedId] = useState(null);
+
+  const activeMember = members.find(m => m.id === currentMemberId);
+  const activeUnitId = activeMember?.unitId || 'u1';
 
   // Filtrado dinámico
   const filteredExpenses = expenses.filter(exp => {
-    // 1. Filtro texto
     const matchesSearch = exp.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           (exp.notes && exp.notes.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    // 2. Filtro categoría
     const matchesCategory = selectedCategory === 'ALL' || exp.category === selectedCategory;
 
-    // 3. Filtro pagador
-    const matchesPayer = selectedPayer === 'ALL' || exp.payerId === selectedPayer;
-
-    // 4. Filtro "Solo Mi Familia" (u1)
+    // Filtro "Solo Mi Familia" (u1)
     if (filterFamilyOnly) {
-      const familyMemberIds = members.filter(m => m.unitId === 'u1').map(m => m.id);
+      const familyMemberIds = members.filter(m => m.unitId === activeUnitId).map(m => m.id);
       const isPayerFamily = familyMemberIds.includes(exp.payerId);
       const isBeneficiaryFamily = exp.beneficiaries && exp.beneficiaries.some(id => familyMemberIds.includes(id));
       if (!isPayerFamily && !isBeneficiaryFamily) return false;
     }
 
-    return matchesSearch && matchesCategory && matchesPayer;
+    return matchesSearch && matchesCategory;
   });
 
-  // Calcular total acumulado de los gastos filtrados
   const totalFilteredEUR = filteredExpenses.reduce((acc, exp) => acc + (exp.amountEUR || 0), 0);
 
-  // Si está activado "Solo Mi Familia", calculamos exactamente la cuota consumida por mi familia en estos gastos
-  const familyMemberIds = members.filter(m => m.unitId === 'u1').map(m => m.id);
+  const familyMemberIds = members.filter(m => m.unitId === activeUnitId).map(m => m.id);
   const totalFamilyShareEUR = filteredExpenses.reduce((acc, exp) => {
     const beneficiaries = exp.beneficiaries || [];
     if (beneficiaries.length === 0) return acc;
@@ -66,14 +61,14 @@ export function ExpenseList() {
             <span>📜 Historial de Gastos</span>
           </h2>
           <p className="text-xs text-slate-400">
-            {filteredExpenses.length} {filteredExpenses.length === 1 ? 'gasto registrado' : 'gastos registrados'}
+            {filteredExpenses.length} {filteredExpenses.length === 1 ? 'gasto visible' : 'gastos visibles'} para {activeMember?.name}
           </p>
         </div>
 
-        {/* Totalizador según filtro */}
+        {/* Totalizador */}
         <div className="text-right bg-slate-900 border border-slate-800 px-3 py-2 rounded-xl">
           <span className="text-[10px] text-slate-400 block font-semibold uppercase tracking-wider">
-            {filterFamilyOnly ? 'Total Consumido Mi Familia' : 'Total Filtrado'}
+            {filterFamilyOnly ? 'Total Consumido Familia' : 'Total Filtrado'}
           </span>
           <span className="text-base font-black text-emerald-400">
             {filterFamilyOnly ? formatEUR(totalFamilyShareEUR) : formatEUR(totalFilteredEUR)}
@@ -81,12 +76,12 @@ export function ExpenseList() {
         </div>
       </div>
 
-      {/* Banner promocional cuando el filtro de Mi Familia está activo */}
+      {/* Banner promocional si está filtrando Mi Familia */}
       {filterFamilyOnly && (
         <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/30 p-3 rounded-xl text-xs text-emerald-300">
           <div className="flex items-center gap-2">
             <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Mostrando solo consumo de <strong>Familia Principal (4 pax)</strong></span>
+            <span>Mostrando solo consumo de tu unidad familiar</span>
           </div>
           <button
             onClick={() => setFilterFamilyOnly(false)}
@@ -151,12 +146,11 @@ export function ExpenseList() {
           {filteredExpenses.map((exp) => {
             const isExpanded = expandedId === exp.id;
             const categoryObj = CATEGORIES.find(c => c.id === exp.category) || CATEGORIES[5];
-            const payer = members.find(m => m.id === exp.payerId);
             const beneficiaries = exp.beneficiaries || [];
             
-            // Cuota consumida por mi familia en este gasto específico
             const familyBeneficiariesCount = beneficiaries.filter(bId => familyMemberIds.includes(bId)).length;
             const familyShareEUR = beneficiaries.length > 0 ? (exp.amountEUR / beneficiaries.length) * familyBeneficiariesCount : 0;
+            const visibility = exp.visibility || 'public';
 
             return (
               <div
@@ -179,8 +173,22 @@ export function ExpenseList() {
                     </div>
 
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-bold text-slate-100 text-sm truncate">{exp.title}</h3>
+
+                        {/* Badge Nivel de Visibilidad */}
+                        {visibility === 'private' && (
+                          <span className="text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
+                            <Lock className="w-3 h-3 text-purple-400" />
+                            <span>Privado</span>
+                          </span>
+                        )}
+                        {visibility === 'family' && (
+                          <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded font-bold flex items-center gap-1">
+                            <Home className="w-3 h-3 text-emerald-400" />
+                            <span>Familiar</span>
+                          </span>
+                        )}
                         {exp.isSettlement && (
                           <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">
                             Liquidación
@@ -208,17 +216,17 @@ export function ExpenseList() {
                         </span>
                       </div>
 
-                      {/* Pill "Parte de Mi Familia" si no son todos */}
-                      {familyBeneficiariesCount > 0 && (
+                      {/* Parte de la Unidad Familiar */}
+                      {familyBeneficiariesCount > 0 && visibility !== 'private' && (
                         <div className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 pt-0.5">
-                          <span>👨‍👩‍👧‍👦 Cuota Mi Familia: {formatEUR(familyShareEUR)}</span>
+                          <span>Cuota Familia: {formatEUR(familyShareEUR)}</span>
                           <span className="text-slate-500">({familyBeneficiariesCount} pax)</span>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Importes y Flecha */}
+                  {/* Importes */}
                   <div className="text-right shrink-0 space-y-0.5">
                     <div className="text-base font-black text-slate-100">
                       {formatEUR(exp.amountEUR)}
@@ -266,7 +274,7 @@ export function ExpenseList() {
 
                     <div className="flex items-center justify-between pt-1 text-[11px] text-slate-500">
                       <span>Fecha: {new Date(exp.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                      <span>Tasa aplicada: 1€ = {exp.exchangeRateUsed || 165}¥</span>
+                      <span>Visibilidad: <strong className="text-slate-300 capitalize">{visibility}</strong></span>
                     </div>
 
                     {/* Acciones Eliminar */}

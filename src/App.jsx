@@ -7,6 +7,7 @@ import { ExpenseList } from './components/ExpenseList';
 import { DebtBalances } from './components/DebtBalances';
 import { SummaryStats } from './components/SummaryStats';
 import { SettingsModal } from './components/SettingsModal';
+import { PinLoginModal } from './components/PinLoginModal';
 
 function MainContent() {
   const { activeTab } = useExpenses();
@@ -26,6 +27,7 @@ export default function App() {
   return (
     <ExpensesProvider>
       <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-red-500 selection:text-white">
+        <PinLoginModal />
         <Header />
         <MainContent />
         <BottomNav />

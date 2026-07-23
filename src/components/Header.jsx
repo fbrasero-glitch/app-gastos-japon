@@ -1,14 +1,24 @@
 import React, { useState } from 'react';
 import { useExpenses } from '../context/ExpensesContext';
-import { RefreshCw, Users, UserCheck, AlertCircle } from 'lucide-react';
+import { RefreshCw, Users, UserCheck, Lock, LogOut, Cloud, CloudOff } from 'lucide-react';
 
 export function Header() {
-  const { exchangeRate, setExchangeRate, filterFamilyOnly, setFilterFamilyOnly, expenses, members } = useExpenses();
+  const {
+    exchangeRate,
+    setExchangeRate,
+    filterFamilyOnly,
+    setFilterFamilyOnly,
+    expenses,
+    members,
+    currentMemberId,
+    logoutCurrentMember,
+    isFirebaseConnected
+  } = useExpenses();
+
   const [showRateModal, setShowRateModal] = useState(false);
   const [tempRate, setTempRate] = useState(exchangeRate.toString());
 
-  // Calcular total global en EUR
-  const totalEUR = expenses.reduce((acc, exp) => acc + (exp.amountEUR || 0), 0);
+  const activeMember = members.find(m => m.id === currentMemberId);
 
   const handleSaveRate = () => {
     const val = parseFloat(tempRate);
@@ -19,10 +29,10 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 shadow-lg">
+    <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-4 py-3 shadow-lg">
       <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
         
-        {/* Título y Logo */}
+        {/* Título y Logo / Perfil Activo */}
         <div className="flex items-center gap-2">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-red-600 via-rose-500 to-amber-500 flex items-center justify-center text-xl shadow-md shadow-red-500/20 border border-white/20">
             💴
@@ -30,15 +40,19 @@ export function Header() {
           <div>
             <h1 className="font-bold text-base text-slate-100 leading-tight flex items-center gap-1.5">
               Gastos Japón
-              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
-                2026
-              </span>
+              {/* Indicador de conexión Firebase */}
+              <span className={`w-2 h-2 rounded-full inline-block ${isFirebaseConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} title={isFirebaseConnected ? 'Firebase Realtime Cloud Conectado' : 'Modo Offline / Local'}></span>
             </h1>
-            <p className="text-xs text-slate-400">8 pax · 3 Unidades Económicas</p>
+            <p className="text-xs text-slate-400 flex items-center gap-1">
+              <span>Perfil:</span>
+              <strong className="text-emerald-400 font-bold flex items-center gap-0.5">
+                {activeMember?.avatar} {activeMember?.name}
+              </strong>
+            </p>
           </div>
         </div>
 
-        {/* Tasa de cambio y Selector de Filtro */}
+        {/* Acciones del Encabezado */}
         <div className="flex items-center gap-2">
           
           {/* Botón Tasa de Cambio */}
@@ -64,14 +78,23 @@ export function Header() {
             {filterFamilyOnly ? (
               <>
                 <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Mi Familia (4)</span>
+                <span>Mi Familia</span>
               </>
             ) : (
               <>
                 <Users className="w-3.5 h-3.5 text-slate-400" />
-                <span>Grupo (8)</span>
+                <span>Grupo</span>
               </>
             )}
+          </button>
+
+          {/* Botón de Bloqueo / Cambiar Perfil */}
+          <button
+            onClick={logoutCurrentMember}
+            className="p-2 rounded-lg bg-slate-800 hover:bg-red-500/20 hover:text-red-400 text-slate-400 border border-slate-700 transition active:scale-95"
+            title="Bloquear Perfil / Cambiar de Integrante"
+          >
+            <Lock className="w-4 h-4" />
           </button>
 
         </div>

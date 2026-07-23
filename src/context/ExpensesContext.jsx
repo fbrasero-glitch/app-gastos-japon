@@ -1,20 +1,24 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { INITIAL_UNITS, INITIAL_MEMBERS, DEFAULT_EXCHANGE_RATE, INITIAL_EXPENSES } from '../data/initialData';
 import { convertJPYToEUR } from '../utils/currency';
+import { initFirebase, dbRef, onValue, dbSet } from '../firebase/config';
 
 const ExpensesContext = createContext();
 
 export function ExpensesProvider({ children }) {
-  // Cargar estado inicial desde LocalStorage o usar predeterminados
-  const [units, setUnits] = useState(() => {
-    const saved = localStorage.getItem('japon_units');
-    return saved ? JSON.parse(saved) : INITIAL_UNITS;
+  // Cargar perfil activo
+  const [currentMemberId, setCurrentMemberIdState] = useState(() => {
+    return localStorage.getItem('japon_current_member_id') || null;
   });
 
-  const [members, setMembers] = useState(() => {
-    const saved = localStorage.getItem('japon_members');
-    return saved ? JSON.parse(saved) : INITIAL_MEMBERS;
+  // Mapa de PINs por integrante { m1: "hash...", m2: "hash..." }
+  const [memberPins, setMemberPins] = useState(() => {
+    const saved = localStorage.getItem('japon_member_pins');
+    return saved ? JSON.parse(saved) : {};
   });
+
+  const [units] = useState(INITIAL_UNITS);
+  const [members] = useState(INITIAL_MEMBERS);
 
   const [exchangeRate, setExchangeRateState] = useState(() => {
     const saved = localStorage.getItem('japon_exchange_rate');
@@ -26,18 +30,51 @@ export function ExpensesProvider({ children }) {
     return saved ? JSON.parse(saved) : INITIAL_EXPENSES;
   });
 
-  // Filtros y Navegación
-  const [filterFamilyOnly, setFilterFamilyOnly] = useState(false); // u1 Familia Principal
-  const [activeTab, setActiveTab] = useState('history'); // 'add' | 'history' | 'balances' | 'summary' | 'settings'
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
+  const [filterFamilyOnly, setFilterFamilyOnly] = useState(false);
+  const [activeTab, setActiveTab] = useState('history');
+
+  // Inicializar Firebase si está configurado
+  useEffect(() => {
+    const { isConfigured, database } = initFirebase();
+    if (isConfigured && database) {
+      setIsFirebaseConnected(true);
+
+      // Escuchar PINs en tiempo real
+      const pinsRef = dbRef(database, 'pins');
+      onValue(pinsRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          setMemberPins(data);
+          localStorage.setItem('japon_member_pins', JSON.stringify(data));
+        }
+      });
+
+      // Escuchar Gastos en tiempo real
+      const expensesRef = dbRef(database, 'expenses');
+      onValue(expensesRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const list = Object.values(data);
+          setExpenses(list);
+          localStorage.setItem('japon_expenses', JSON.stringify(list));
+        }
+      });
+    }
+  }, []);
 
   // Persistir en LocalStorage
   useEffect(() => {
-    localStorage.setItem('japon_units', JSON.stringify(units));
-  }, [units]);
+    if (currentMemberId) {
+      localStorage.setItem('japon_current_member_id', currentMemberId);
+    } else {
+      localStorage.removeItem('japon_current_member_id');
+    }
+  }, [currentMemberId]);
 
   useEffect(() => {
-    localStorage.setItem('japon_members', JSON.stringify(members));
-  }, [members]);
+    localStorage.setItem('japon_member_pins', JSON.stringify(memberPins));
+  }, [memberPins]);
 
   useEffect(() => {
     localStorage.setItem('japon_exchange_rate', exchangeRate.toString());
@@ -47,11 +84,34 @@ export function ExpensesProvider({ children }) {
     localStorage.setItem('japon_expenses', JSON.stringify(expenses));
   }, [expenses]);
 
-  // Funciones de modificación
+  // Funciones de gestión de sesión y PIN
+  const setCurrentMemberId = (mId) => {
+    setCurrentMemberIdState(mId);
+  };
+
+  const logoutCurrentMember = () => {
+    setCurrentMemberIdState(null);
+  };
+
+  const setMemberPin = (memberId, hashedPin) => {
+    const updated = { ...memberPins, [memberId]: hashedPin };
+    setMemberPins(updated);
+
+    const { isConfigured, database } = initFirebase();
+    if (isConfigured && database) {
+      dbSet(dbRef(database, `pins/${memberId}`), hashedPin);
+    }
+  };
+
+  // Funciones de modificación de gastos
   const setExchangeRate = (newRate) => {
     const rate = parseFloat(newRate);
     if (!isNaN(rate) && rate > 0) {
       setExchangeRateState(rate);
+      const { isConfigured, database } = initFirebase();
+      if (isConfigured && database) {
+        dbSet(dbRef(database, 'exchangeRate'), rate);
+      }
     }
   };
 
@@ -63,47 +123,40 @@ export function ExpensesProvider({ children }) {
       amountEUR = Number(expenseData.amountOriginal);
     }
 
+    const currentMember = members.find(m => m.id === currentMemberId);
+
     const newExpense = {
       ...expenseData,
       id: `exp-${Date.now()}`,
       amountEUR: Number(amountEUR.toFixed(2)),
       exchangeRateUsed: expenseData.currency === 'JPY' ? (expenseData.exchangeRateUsed || exchangeRate) : exchangeRate,
-      date: expenseData.date || new Date().toISOString()
+      date: expenseData.date || new Date().toISOString(),
+      visibility: expenseData.visibility || 'public', // 'public' | 'family' | 'private'
+      createdBy: currentMemberId || expenseData.payerId,
+      createdUnitId: currentMember?.unitId || 'u1'
     };
 
     setExpenses(prev => [newExpense, ...prev]);
-  };
 
-  const updateExpense = (id, updatedData) => {
-    let amountEUR = updatedData.amountEUR;
-    if (updatedData.currency === 'JPY') {
-      amountEUR = convertJPYToEUR(updatedData.amountOriginal, updatedData.exchangeRateUsed || exchangeRate);
-    } else {
-      amountEUR = Number(updatedData.amountOriginal);
+    const { isConfigured, database } = initFirebase();
+    if (isConfigured && database) {
+      dbSet(dbRef(database, `expenses/${newExpense.id}`), newExpense);
     }
-
-    setExpenses(prev => prev.map(exp => {
-      if (exp.id === id) {
-        return {
-          ...exp,
-          ...updatedData,
-          amountEUR: Number(amountEUR.toFixed(2))
-        };
-      }
-      return exp;
-    }));
   };
 
   const deleteExpense = (id) => {
     setExpenses(prev => prev.filter(exp => exp.id !== id));
+
+    const { isConfigured, database } = initFirebase();
+    if (isConfigured && database) {
+      dbSet(dbRef(database, `expenses/${id}`), null);
+    }
   };
 
-  // Registrar un pago de liquidación entre integrantes o unidades
   const settleDebt = ({ fromId, toId, amountEUR, isUnitLevel = false, notes = "Liquidación de deuda" }) => {
     let payerId = fromId;
     let beneficiaries = [toId];
 
-    // Si es a nivel de unidad, asignamos el representante principal de la unidad
     if (isUnitLevel) {
       const fromUnitMembers = members.filter(m => m.unitId === fromId);
       const toUnitMembers = members.filter(m => m.unitId === toId);
@@ -111,6 +164,7 @@ export function ExpensesProvider({ children }) {
       beneficiaries = toUnitMembers.map(m => m.id);
     }
 
+    const currentMember = members.find(m => m.id === currentMemberId);
     const amountJPY = Math.round(amountEUR * exchangeRate);
 
     const settlementExpense = {
@@ -127,39 +181,80 @@ export function ExpensesProvider({ children }) {
       splitType: "custom",
       beneficiaries: beneficiaries,
       isSettlement: true,
-      notes: notes
+      notes: notes,
+      visibility: 'public', // Las liquidaciones de deudas son públicas para que cuadren los saldos
+      createdBy: currentMemberId || payerId,
+      createdUnitId: currentMember?.unitId || 'u1'
     };
 
     setExpenses(prev => [settlementExpense, ...prev]);
+
+    const { isConfigured, database } = initFirebase();
+    if (isConfigured && database) {
+      dbSet(dbRef(database, `expenses/${settlementExpense.id}`), settlementExpense);
+    }
   };
 
   const resetToDefaults = () => {
-    setUnits(INITIAL_UNITS);
-    setMembers(INITIAL_MEMBERS);
+    setMemberPins({});
     setExchangeRateState(DEFAULT_EXCHANGE_RATE);
     setExpenses(INITIAL_EXPENSES);
-    localStorage.removeItem('japon_units');
-    localStorage.removeItem('japon_members');
+    localStorage.removeItem('japon_member_pins');
     localStorage.removeItem('japon_exchange_rate');
     localStorage.removeItem('japon_expenses');
+    localStorage.removeItem('japon_current_member_id');
+    setCurrentMemberIdState(null);
   };
+
+  // FILTRADO ESTRICTO DE VISIBILIDAD DE GASTOS
+  // 1. Público: Visible para todos (8 pax)
+  // 2. Familiar: Visible solo si el creador o pagador pertenece a la misma Unidad Económica que el usuario activo
+  // 3. Privado: Visible exclusivamente si el usuario activo es el creador o pagador
+  const activeMember = members.find(m => m.id === currentMemberId);
+  const activeUnitId = activeMember?.unitId || 'u1';
+
+  const visibleExpenses = expenses.filter(exp => {
+    const visibility = exp.visibility || 'public';
+
+    if (visibility === 'private') {
+      return exp.createdBy === currentMemberId || exp.payerId === currentMemberId;
+    }
+
+    if (visibility === 'family') {
+      const creator = members.find(m => m.id === exp.createdBy);
+      const payer = members.find(m => m.id === exp.payerId);
+      const creatorUnitId = creator?.unitId || exp.createdUnitId;
+      const payerUnitId = payer?.unitId;
+
+      return creatorUnitId === activeUnitId || payerUnitId === activeUnitId;
+    }
+
+    // Public
+    return true;
+  });
 
   return (
     <ExpensesContext.Provider value={{
       units,
       members,
+      currentMemberId,
+      setCurrentMemberId,
+      logoutCurrentMember,
+      memberPins,
+      setMemberPin,
       exchangeRate,
       setExchangeRate,
-      expenses,
+      expenses: visibleExpenses, // Pasa únicamente los gastos visibles según la privacidad del perfil
+      allRawExpenses: expenses,
       addExpense,
-      updateExpense,
       deleteExpense,
       settleDebt,
       resetToDefaults,
       filterFamilyOnly,
       setFilterFamilyOnly,
       activeTab,
-      setActiveTab
+      setActiveTab,
+      isFirebaseConnected
     }}>
       {children}
     </ExpensesContext.Provider>
