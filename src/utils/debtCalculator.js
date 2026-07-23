@@ -4,10 +4,8 @@ import { convertJPYToEUR } from './currency';
 
 /**
  * Calcula los balances de consumo y los balances financieros netos por integrante y unidad económica.
- * Cada Unidad Económica actúa como una caja/billetera única.
  */
 export function calculateBalances(expenses, members, units, currentExchangeRate = 165.0) {
-  // Inicializar mapa de integrantes
   const memberBalances = {};
   members.forEach(m => {
     memberBalances[m.id] = {
@@ -20,7 +18,6 @@ export function calculateBalances(expenses, members, units, currentExchangeRate 
     };
   });
 
-  // Inicializar mapa de unidades económicas (familias)
   const unitBalances = {};
   units.forEach(u => {
     unitBalances[u.id] = {
@@ -50,8 +47,7 @@ export function calculateBalances(expenses, members, units, currentExchangeRate 
     const payerUnitId = payerMember?.unitId || exp.createdUnitId;
 
     if (exp.isSettlement) {
-      // LIQUIDACIÓN DE DEUDA ENTRE UNIDADES
-      // El pagador desembolsa dinero para saldar la deuda de su unidad
+      // LIQUIDACIÓN DE DEUDA (Individual o Familiar)
       if (memberBalances[payerId]) {
         memberBalances[payerId].paidEUR += expEUR;
       }
@@ -59,7 +55,6 @@ export function calculateBalances(expenses, members, units, currentExchangeRate 
         unitBalances[payerUnitId].paidEUR += expEUR;
       }
 
-      // El receptor (o la unidad receptora) recibe el dinero
       const recipientId = beneficiaries[0];
       const recipientMember = members.find(m => m.id === recipientId);
       const recipientUnitId = recipientMember?.unitId;
@@ -94,7 +89,7 @@ export function calculateBalances(expenses, members, units, currentExchangeRate 
     }
   });
 
-  // Calcular balance neto por integrante y unidad
+  // Calcular balance neto final por integrante y unidad
   Object.values(memberBalances).forEach(m => {
     m.netEUR = Number((m.paidEUR - m.owedEUR).toFixed(2));
     m.paidEUR = Number(m.paidEUR.toFixed(2));
@@ -114,10 +109,9 @@ export function calculateBalances(expenses, members, units, currentExchangeRate 
 }
 
 /**
- * Algoritmo Greedy de simplificación de deudas entre Unidades Económicas.
- * Las deudas de liquidación se realizan a nivel de Unidad Económica (Caja única).
+ * Simplifica deudas a nivel de Unidad Económica (Familias)
  */
-export function simplifyDebts(unitBalancesMap) {
+export function simplifyUnitDebts(unitBalancesMap) {
   const debtors = [];
   const creditors = [];
 
@@ -150,7 +144,8 @@ export function simplifyDebts(unitBalancesMap) {
         fromName: debtor.name,
         toId: creditor.id,
         toName: creditor.name,
-        amountEUR: roundedAmount
+        amountEUR: roundedAmount,
+        isUnit: true
       });
     }
 
@@ -159,6 +154,73 @@ export function simplifyDebts(unitBalancesMap) {
 
     if (debtor.balance < 0.01) i++;
     if (creditor.balance < 0.01) j++;
+  }
+
+  return settlements;
+}
+
+/**
+ * Simplifica deudas a nivel Individual PERO EXCLUYENDO deudas internas dentro de la misma familia.
+ * (Ej: Ivan e hijos no deben a Felipe, pero Cesar de otra familia sí puede saldar individualmente con Felipe).
+ */
+export function simplifyIndividualDebts(memberBalancesMap, members) {
+  // Separar integrantes por unidad
+  const debtors = [];
+  const creditors = [];
+
+  Object.values(memberBalancesMap).forEach(m => {
+    const member = members.find(mem => mem.id === m.memberId);
+    const balance = Math.round(m.netEUR * 100) / 100;
+    
+    if (balance < -0.01) {
+      debtors.push({
+        id: m.memberId,
+        name: m.memberName,
+        unitId: member?.unitId,
+        balance: Math.abs(balance)
+      });
+    } else if (balance > 0.01) {
+      creditors.push({
+        id: m.memberId,
+        name: m.memberName,
+        unitId: member?.unitId,
+        balance: balance
+      });
+    }
+  });
+
+  debtors.sort((a, b) => b.balance - a.balance);
+  creditors.sort((a, b) => b.balance - a.balance);
+
+  const settlements = [];
+
+  // Emparejar deudores y acreedores que pertenecen a FAMILIAS DISTINTAS
+  for (let d of debtors) {
+    if (d.balance < 0.01) continue;
+
+    for (let c of creditors) {
+      if (c.balance < 0.01) continue;
+      
+      // EXCLUIR deudas entre personas de la misma unidad familiar
+      if (d.unitId === c.unitId) continue;
+
+      const amount = Math.min(d.balance, c.balance);
+      const roundedAmount = Math.round(amount * 100) / 100;
+
+      if (roundedAmount > 0) {
+        settlements.push({
+          fromId: d.id,
+          fromName: d.name,
+          toId: c.id,
+          toName: c.name,
+          amountEUR: roundedAmount,
+          isUnit: false
+        });
+
+        d.balance -= amount;
+        c.balance -= amount;
+      }
+    }
   }
 
   return settlements;
