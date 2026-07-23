@@ -34,9 +34,11 @@ export function AddExpenseForm({ onComplete }) {
     Varios: ['Consigna Maletas', 'Agua y Bebidas', 'Sim Card / Wifi Pocket']
   };
 
-  const rawNum = parseFloat(amountOriginal) || 0;
+  // Parseo flexible sin requerir decimales
+  const cleanStr = (amountOriginal || '').toString().replace(',', '.').trim();
+  const rawNum = parseFloat(cleanStr) || 0;
   const equivalentEUR = currency === 'JPY' ? convertJPYToEUR(rawNum, exchangeRate) : rawNum;
-  const equivalentJPY = currency === 'EUR' ? convertEURToJPY(rawNum, exchangeRate) : rawNum;
+  const equivalentJPY = currency === 'EUR' ? convertEURToJPY(rawNum, exchangeRate) : Math.round(rawNum);
 
   const selectAllBeneficiaries = () => {
     setBeneficiaries(members.map(m => m.id));
@@ -61,15 +63,21 @@ export function AddExpenseForm({ onComplete }) {
     }
   };
 
+  // Sumar importe rápido al botón
+  const handleAddQuickAmount = (val) => {
+    const currentVal = parseFloat(cleanStr) || 0;
+    setAmountOriginal((currentVal + val).toString());
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!title.trim() || rawNum <= 0 || beneficiaries.length === 0) return;
 
     addExpense({
       title: title.trim(),
-      amountOriginal: rawNum,
+      amountOriginal: currency === 'JPY' ? Math.round(rawNum) : rawNum,
       currency,
-      amountEUR: equivalentEUR,
+      amountEUR: Number(equivalentEUR.toFixed(2)),
       exchangeRateUsed: exchangeRate,
       payerId,
       paymentMethod,
@@ -97,7 +105,7 @@ export function AddExpenseForm({ onComplete }) {
           <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
             <span>➕ Añadir Nuevo Gasto</span>
           </h2>
-          <p className="text-xs text-slate-400">Imputación en Yenes (JPY) o Euros con conversión instantánea</p>
+          <p className="text-xs text-slate-400">Introduce números enteros o decimales libremente</p>
         </div>
         <div className="text-right">
           <span className="text-[10px] text-slate-400 block font-medium">Perfil Activo</span>
@@ -109,12 +117,12 @@ export function AddExpenseForm({ onComplete }) {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         
-        {/* 👁️ NUEVA SECCIÓN: Nivel de Visibilidad y Privacidad */}
+        {/* 1. Nivel de Visibilidad y Privacidad */}
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-2.5 shadow-lg">
           <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <Eye className="w-4 h-4 text-amber-400" />
-              <span>1. Nivel de Visibilidad del Gasto</span>
+              <span>1. Visibilidad del Gasto</span>
             </span>
             <span className="text-[10px] text-slate-500 font-bold uppercase">{visibility}</span>
           </label>
@@ -219,12 +227,15 @@ export function AddExpenseForm({ onComplete }) {
           />
         </div>
 
-        {/* 3. Importe y Moneda */}
+        {/* 3. Importe y Moneda (Sin restricción de decimales) */}
         <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-              3. Importe y Divisa
-            </label>
+            <div>
+              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider block">
+                3. Importe y Divisa
+              </label>
+              <span className="text-[10px] text-slate-400">Escribe el número entero sin preocuparte de decimales</span>
+            </div>
 
             {/* Toggle JPY / EUR */}
             <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
@@ -253,21 +264,42 @@ export function AddExpenseForm({ onComplete }) {
             </div>
           </div>
 
-          {/* Input de Importe Prominente */}
+          {/* Input de Importe Prominente sin step restrictivo */}
           <div className="relative flex items-center">
             <input
               type="number"
-              step={currency === 'JPY' ? '1' : '0.01'}
+              step="any"
+              min="0"
+              inputMode="decimal"
               required
-              min="0.01"
               value={amountOriginal}
               onChange={(e) => setAmountOriginal(e.target.value)}
-              placeholder="0"
+              placeholder="ej: 1500"
               className="w-full bg-slate-950 border border-slate-700 focus:border-red-500 rounded-xl px-4 py-3.5 text-2xl font-black text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-red-500/20 pr-16"
             />
             <span className="absolute right-4 text-lg font-bold text-slate-400">
               {currency === 'JPY' ? '¥' : '€'}
             </span>
+          </div>
+
+          {/* Botones de Importes Rápidos */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pt-1 no-scrollbar">
+            <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">Sumar rápido:</span>
+            {currency === 'JPY' ? (
+              <>
+                <button type="button" onClick={() => handleAddQuickAmount(500)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">+ 500 ¥</button>
+                <button type="button" onClick={() => handleAddQuickAmount(1000)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">+ 1.000 ¥</button>
+                <button type="button" onClick={() => handleAddQuickAmount(5000)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">+ 5.000 ¥</button>
+                <button type="button" onClick={() => handleAddQuickAmount(10000)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">+ 10.000 ¥</button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => handleAddQuickAmount(5)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">+ 5 €</button>
+                <button type="button" onClick={() => handleAddQuickAmount(10)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">+ 10 €</button>
+                <button type="button" onClick={() => handleAddQuickAmount(20)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">+ 20 €</button>
+                <button type="button" onClick={() => handleAddQuickAmount(50)} className="text-[10px] font-bold px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">+ 50 €</button>
+              </>
+            )}
           </div>
 
           {/* Indicador en Vivo de Equivalencia */}
