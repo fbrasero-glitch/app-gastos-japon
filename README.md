@@ -1,16 +1,31 @@
-# React + Vite
+# 💴 Gastos Japón - Control de Gastos en Grupo
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Aplicación web responsive (Mobile-First) progresiva para el control de gastos de un viaje en grupo a Japón de **8 personas organizadas en 3 unidades económicas**.
 
-Currently, two official plugins are available:
+## 👨‍👩‍👧‍👦 Unidades Económicas e Integrantes
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. **Familia Principal (4 pax)**: Felipe, Lorena, Ivan, Laura
+2. **Familia Vicente y Lola (2 pax)**: Vicente, Lola
+3. **Familia Cesar y Gema (2 pax)**: Cesar, Gema
 
-## React Compiler
+## 🚀 Características Clave
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Conversión de Divisas Instantánea (JPY / EUR)**: Imputación de gastos en Yenes o Euros con ratio de cambio editable (ej. 1 € = 165 JPY).
+- **Reparto Personalizado o por Cabezas**: Reparto automático entre todos los integrantes, solo adultos, solo la unidad familiar o selección individualizada.
+- **Cuentas Claras & Liquidación de Deudas**: Algoritmo que simplifica las deudas cruzadas al mínimo número de transferencias (tanto por unidad económica como por integrante individual).
+- **Vista "Mi Familia"**: Filtro directo para aislar el consumo de la Familia Principal (Felipe, Lorena, Ivan, Laura).
+- **Persistencia Local**: Guarda el estado automáticamente en `LocalStorage` y ofrece exportación e importación de backups en formato `.json`.
 
-## Expanding the Oxlint configuration
+## 🛠️ Tecnologías
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- **React 19 + Vite**
+- **Tailwind CSS v4**
+- **Lucide Icons**
+- **Canvas Confetti**
+
+## 🏃 Cómo ejecutar en local
+
+```bash
+npm install
+npm run dev
+```

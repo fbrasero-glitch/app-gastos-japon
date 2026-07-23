@@ -11,7 +11,7 @@ export const INITIAL_UNITS = [
   },
   {
     id: "u2",
-    name: "Suegros",
+    name: "Familia Vicente y Lola",
     subtitle: "Vicente, Lola (2 pax)",
     color: "indigo",
     badgeBg: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
@@ -19,7 +19,7 @@ export const INITIAL_UNITS = [
   },
   {
     id: "u3",
-    name: "Cuñado y Pareja",
+    name: "Familia Cesar y Gema",
     subtitle: "Cesar, Gema (2 pax)",
     color: "amber",
     badgeBg: "bg-amber-500/20 text-amber-300 border-amber-500/30",
@@ -33,10 +33,10 @@ export const INITIAL_MEMBERS = [
   { id: "m2", name: "Lorena", unitId: "u1", isAdult: true, avatar: "👩" },
   { id: "m3", name: "Ivan", unitId: "u1", isAdult: false, avatar: "👦" },
   { id: "m4", name: "Laura", unitId: "u1", isAdult: false, avatar: "👧" },
-  // Suegros
+  // Familia Vicente y Lola
   { id: "m5", name: "Vicente", unitId: "u2", isAdult: true, avatar: "👴" },
   { id: "m6", name: "Lola", unitId: "u2", isAdult: true, avatar: "👵" },
-  // Cuñado y Pareja
+  // Familia Cesar y Gema
   { id: "m7", name: "Cesar", unitId: "u3", isAdult: true, avatar: "🧔" },
   { id: "m8", name: "Gema", unitId: "u3", isAdult: true, avatar: "👩‍🦰" }
 ];
@@ -71,7 +71,7 @@ export const INITIAL_EXPENSES = [
     category: "Ocio",
     date: new Date(Date.now() - 3600000 * 24).toISOString(),
     splitType: "custom",
-    beneficiaries: ["m1", "m2", "m3", "m4", "m7", "m8"], // Familia Principal + Cuñados
+    beneficiaries: ["m1", "m2", "m3", "m4", "m7", "m8"],
     notes: "Pases de un día comprados online."
   },
   {
