@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useExpenses } from '../context/ExpensesContext';
 import { formatEUR, formatJPY } from '../utils/currency';
-import { calculateBalances, calculateFamilyStats } from '../utils/debtCalculator';
-import { Building2, User, Wallet, Sparkles } from 'lucide-react';
+import { calculateBalances } from '../utils/debtCalculator';
+import { Building2, User } from 'lucide-react';
 
 export function SummaryStats() {
   const { expenses, members, units, currentMemberId, exchangeRate } = useExpenses();
@@ -11,10 +11,12 @@ export function SummaryStats() {
   const activeMember = members.find(m => m.id === currentMemberId);
   const activeUnit = units.find(u => u.id === activeMember?.unitId);
 
-  const totalGroupEUR = expenses.reduce((acc, exp) => acc + (exp.amountEUR || 0), 0);
+  // Filtrar únicamente los gastos reales del viaje (sin contar transferencias de liquidación)
+  const realExpenses = expenses.filter(exp => !exp.isSettlement);
+  const totalGroupEUR = realExpenses.reduce((acc, exp) => acc + (exp.amountEUR || 0), 0);
   const totalGroupJPY = Math.round(totalGroupEUR * exchangeRate);
 
-  // Estadísticas del grupo por unidad económica (lo consumido en total por cada familia)
+  // Calcular saldos y consumo exacto por integrante y familia
   const { unitBalances, memberBalances } = calculateBalances(expenses, members, units, exchangeRate);
 
   const familyStatsList = Object.values(unitBalances).map(u => {
@@ -37,13 +39,13 @@ export function SummaryStats() {
         <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
           <span>📊 Control de Gastos</span>
         </h2>
-        <p className="text-xs text-slate-400">Totales consumidos a nivel familiar e individual en Euros (€)</p>
+        <p className="text-xs text-slate-400">Totales consumidos en gastos reales del viaje en Euros (€)</p>
       </div>
 
       {/* KPI Principal Total Grupo */}
       <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800 p-4.5 rounded-3xl shadow-xl flex items-center justify-between">
         <div className="space-y-1">
-          <span className="text-xs font-semibold text-slate-400 block uppercase tracking-wider">Gasto Total Acumulado</span>
+          <span className="text-xs font-semibold text-slate-400 block uppercase tracking-wider">Gasto Real del Viaje</span>
           <div className="text-3xl font-black text-slate-100">{formatEUR(totalGroupEUR)}</div>
         </div>
         <div className="text-right">
@@ -84,7 +86,7 @@ export function SummaryStats() {
       {viewTab === 'family' && (
         <div className="space-y-3">
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1">
-            Consumo total por unidad familiar (3 familias)
+            Consumo por unidad familiar (3 familias)
           </div>
 
           <div className="space-y-2.5">
@@ -129,7 +131,7 @@ export function SummaryStats() {
                       ></div>
                     </div>
                     <div className="text-[10px] text-slate-400 text-right font-medium">
-                      Representa el {item.percentage.toFixed(1)}% del gasto del grupo
+                      {item.percentage.toFixed(1)}% del consumo total del grupo
                     </div>
                   </div>
                 </div>
@@ -143,7 +145,7 @@ export function SummaryStats() {
       {viewTab === 'individual' && (
         <div className="space-y-3">
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1">
-            Consumo total por integrante (8 personas)
+            Consumo por integrante (8 personas)
           </div>
 
           <div className="grid grid-cols-2 gap-2.5">

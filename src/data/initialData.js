@@ -43,68 +43,8 @@ export const INITIAL_MEMBERS = [
 
 export const DEFAULT_EXCHANGE_RATE = 165.0; // 1 EUR = 165 JPY
 
-export const INITIAL_EXPENSES = [
-  {
-    id: "exp-1",
-    title: "Cena Izakaya Bienvenida Shinjuku",
-    amountOriginal: 19800,
-    currency: "JPY",
-    amountEUR: 120.0,
-    exchangeRateUsed: 165.0,
-    payerId: "m1", // Felipe
-    paymentMethod: "cash_jpy", // 'card' | 'cash_jpy' | 'cash_eur'
-    category: "Comida",
-    date: new Date(Date.now() - 3600000 * 48).toISOString(),
-    splitType: "equal",
-    beneficiaries: ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"], // Todos
-    notes: "Cena completa de bienvenida con brochetas yakitori y bebidas."
-  },
-  {
-    id: "exp-2",
-    title: "Entradas Tokyo Disneyland",
-    amountOriginal: 33000,
-    currency: "JPY",
-    amountEUR: 200.0,
-    exchangeRateUsed: 165.0,
-    payerId: "m7", // Cesar
-    paymentMethod: "card",
-    category: "Ocio",
-    date: new Date(Date.now() - 3600000 * 24).toISOString(),
-    splitType: "custom",
-    beneficiaries: ["m1", "m2", "m3", "m4", "m7", "m8"],
-    notes: "Pases de un día comprados online."
-  },
-  {
-    id: "exp-3",
-    title: "Billete Shinkansen Tokio -> Kioto",
-    amountOriginal: 108900,
-    currency: "JPY",
-    amountEUR: 660.0,
-    exchangeRateUsed: 165.0,
-    payerId: "m5", // Vicente
-    paymentMethod: "card",
-    category: "Transporte",
-    date: new Date(Date.now() - 3600000 * 12).toISOString(),
-    splitType: "equal",
-    beneficiaries: ["m1", "m2", "m3", "m4", "m5", "m6", "m7", "m8"], // Todos
-    notes: "Billetes reservados en tren bala para todo el grupo."
-  },
-  {
-    id: "exp-4",
-    title: "Snacks y Souvenirs Lawson (Familia)",
-    amountOriginal: 4950,
-    currency: "JPY",
-    amountEUR: 30.0,
-    exchangeRateUsed: 165.0,
-    payerId: "m2", // Lorena
-    paymentMethod: "cash_jpy",
-    category: "Compras",
-    date: new Date(Date.now() - 3600000 * 5).toISOString(),
-    splitType: "equal",
-    beneficiaries: ["m1", "m2", "m3", "m4"], // Solo Familia Principal
-    notes: "Gastos personales de la unidad familiar."
-  }
-];
+// Inicializado a vacíos a petición del usuario para introducir sus datos reales
+export const INITIAL_EXPENSES = [];
 
 export const CATEGORIES = [
   { id: "Comida", name: "Comida / Restaurantes", icon: "🍱", color: "bg-red-500/20 text-red-400 border-red-500/30" },

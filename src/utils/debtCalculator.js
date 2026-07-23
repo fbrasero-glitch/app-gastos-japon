@@ -3,8 +3,8 @@
 import { convertJPYToEUR } from './currency';
 
 /**
- * Calcula los balances netos (pagado, debido y balance final) para cada integrante y cada unidad económica.
- * Todo se calcula y normaliza en EUROS (€).
+ * Calcula los balances netos (pagado, consumido y balance final) para cada integrante y unidad económica.
+ * Maneja correctamente la diferencia entre Gastos del Viaje y Transferencias de Liquidación.
  */
 export function calculateBalances(expenses, members, units, currentExchangeRate = 165.0) {
   // Inicializar mapas de integrantes
@@ -14,40 +14,51 @@ export function calculateBalances(expenses, members, units, currentExchangeRate 
       memberId: m.id,
       memberName: m.name,
       unitId: m.unitId,
-      paidEUR: 0,
-      owedEUR: 0,
-      netEUR: 0
+      paidEUR: 0,  // Total desembolsado de su bolsillo
+      owedEUR: 0,  // Total consumido en gastos del viaje
+      netEUR: 0    // Balance final (Pagado - Consumido)
     };
   });
 
-  // Procesar cada gasto
+  // Procesar cada registro
   expenses.forEach(exp => {
-    // Determinar importe en EUR del gasto
     let expEUR = exp.amountEUR;
     if (!expEUR || expEUR <= 0) {
       if (exp.currency === 'JPY') {
         expEUR = convertJPYToEUR(exp.amountOriginal, exp.exchangeRateUsed || currentExchangeRate);
       } else {
-        expEUR = exp.amountOriginal;
+        expEUR = Number(exp.amountOriginal) || 0;
       }
     }
 
     const payerId = exp.payerId;
     const beneficiaries = exp.beneficiaries || [];
 
-    // Añadir al pagador
-    if (memberBalances[payerId]) {
-      memberBalances[payerId].paidEUR += expEUR;
-    }
+    if (exp.isSettlement) {
+      // LIQUIDACIÓN (Transferencia entre personas para saldar deuda)
+      // El pagador desembolsa dinero para saldar deudas
+      if (memberBalances[payerId]) {
+        memberBalances[payerId].paidEUR += expEUR;
+      }
+      // El receptor disminuye su crédito (o se le descuenta de su desembolso neto)
+      const recipientId = beneficiaries[0];
+      if (recipientId && memberBalances[recipientId]) {
+        memberBalances[recipientId].paidEUR -= expEUR;
+      }
+    } else {
+      // GASTO REAL DEL VIAJE (Comida, Tren, Hotel, etc.)
+      if (memberBalances[payerId]) {
+        memberBalances[payerId].paidEUR += expEUR;
+      }
 
-    // Repartir el coste proporcionalmente entre los beneficiarios
-    if (beneficiaries.length > 0) {
-      const shareEUR = expEUR / beneficiaries.length;
-      beneficiaries.forEach(bId => {
-        if (memberBalances[bId]) {
-          memberBalances[bId].owedEUR += shareEUR;
-        }
-      });
+      if (beneficiaries.length > 0) {
+        const shareEUR = expEUR / beneficiaries.length;
+        beneficiaries.forEach(bId => {
+          if (memberBalances[bId]) {
+            memberBalances[bId].owedEUR += shareEUR;
+          }
+        });
+      }
     }
   });
 
@@ -93,12 +104,9 @@ export function calculateBalances(expenses, members, units, currentExchangeRate 
 
 /**
  * Algoritmo Greedy de simplificación de deudas para minimizar las transferencias.
- * Funciona tanto para lista de integrantes como de unidades familiares.
- * @param {Array<{ id: string, name: string, netEUR: number }>} entities 
- * @returns {Array<{ fromId: string, fromName: string, toId: string, toName: string, amountEUR: number }>}
+ * Funciona tanto a nivel de integrantes como de unidades familiares.
  */
 export function simplifyDebts(entities) {
-  // Filtrar y clonar saldos
   const debtors = [];
   const creditors = [];
 
@@ -111,7 +119,6 @@ export function simplifyDebts(entities) {
     }
   });
 
-  // Ordenar de mayor a menor
   debtors.sort((a, b) => b.balance - a.balance);
   creditors.sort((a, b) => b.balance - a.balance);
 
@@ -147,23 +154,23 @@ export function simplifyDebts(entities) {
 }
 
 /**
- * Calcula estadísticas rápidas para el filtro de "Mis Gastos" (Familia Principal u1)
+ * Calcula estadísticas de gasto para una familia
  */
 export function calculateFamilyStats(expenses, familyUnitId = "u1", members = []) {
   const familyMemberIds = members.filter(m => m.unitId === familyUnitId).map(m => m.id);
   
-  let totalDirectSpentEUR = 0; // Gastos donde un miembro de la familia pagó
-  let totalFamilyShareEUR = 0;  // Cuota consumida por los miembros de la familia
+  let totalDirectSpentEUR = 0;
+  let totalFamilyShareEUR = 0;
 
   expenses.forEach(exp => {
+    if (exp.isSettlement) return; // No contar transferencias como gasto real del viaje
+
     const expEUR = exp.amountEUR || 0;
     
-    // Si pagó alguien de mi familia
     if (familyMemberIds.includes(exp.payerId)) {
       totalDirectSpentEUR += expEUR;
     }
 
-    // Cuota consumida por mi familia en este gasto
     const beneficiaries = exp.beneficiaries || [];
     if (beneficiaries.length > 0) {
       const perPerson = expEUR / beneficiaries.length;
