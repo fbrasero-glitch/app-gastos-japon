@@ -1,42 +1,33 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useExpenses } from '../context/ExpensesContext';
-import { CATEGORIES } from '../data/initialData';
 import { formatEUR, formatJPY } from '../utils/currency';
 import { calculateBalances, calculateFamilyStats } from '../utils/debtCalculator';
-import { PieChart, Wallet, CreditCard, Coins, ShoppingBag, Utensils, Train, Building, Layers } from 'lucide-react';
+import { Building2, User, Wallet, Sparkles } from 'lucide-react';
 
 export function SummaryStats() {
-  const { expenses, members, units, exchangeRate } = useExpenses();
+  const { expenses, members, units, currentMemberId, exchangeRate } = useExpenses();
+  const [viewTab, setViewTab] = useState('family'); // 'family' | 'individual'
 
-  const totalEUR = expenses.reduce((acc, exp) => acc + (exp.amountEUR || 0), 0);
-  const totalJPY = Math.round(totalEUR * exchangeRate);
+  const activeMember = members.find(m => m.id === currentMemberId);
+  const activeUnit = units.find(u => u.id === activeMember?.unitId);
 
-  // Estadísticas específicas de Mi Familia (u1)
-  const familyStats = calculateFamilyStats(expenses, 'u1', members);
+  const totalGroupEUR = expenses.reduce((acc, exp) => acc + (exp.amountEUR || 0), 0);
+  const totalGroupJPY = Math.round(totalGroupEUR * exchangeRate);
 
-  // Gasto por Categoría
-  const categoryTotals = CATEGORIES.map(cat => {
-    const sumEUR = expenses
-      .filter(exp => exp.category === cat.id)
-      .reduce((acc, exp) => acc + (exp.amountEUR || 0), 0);
-    const percentage = totalEUR > 0 ? (sumEUR / totalEUR) * 100 : 0;
-    return { ...cat, sumEUR, percentage };
-  }).sort((a, b) => b.sumEUR - a.sumEUR);
+  // Estadísticas del grupo por unidad económica (lo consumido en total por cada familia)
+  const { unitBalances, memberBalances } = calculateBalances(expenses, members, units, exchangeRate);
 
-  // Gasto por Unidad Económica (Consumido/Debido)
-  const { unitBalances } = calculateBalances(expenses, members, units, exchangeRate);
-  const unitStats = Object.values(unitBalances).map(u => {
-    const percentage = totalEUR > 0 ? (u.owedEUR / totalEUR) * 100 : 0;
+  const familyStatsList = Object.values(unitBalances).map(u => {
     const unitInfo = units.find(unit => unit.id === u.unitId);
-    return { ...u, percentage, unitInfo };
+    const percentage = totalGroupEUR > 0 ? (u.owedEUR / totalGroupEUR) * 100 : 0;
+    return { ...u, unitInfo, percentage };
   });
 
-  // Métodos de Pago
-  const paymentStats = {
-    card: expenses.filter(e => e.paymentMethod === 'card').reduce((acc, e) => acc + e.amountEUR, 0),
-    cash_jpy: expenses.filter(e => e.paymentMethod === 'cash_jpy').reduce((acc, e) => acc + e.amountEUR, 0),
-    cash_eur: expenses.filter(e => e.paymentMethod === 'cash_eur').reduce((acc, e) => acc + e.amountEUR, 0)
-  };
+  const memberStatsList = Object.values(memberBalances).map(m => {
+    const memberInfo = members.find(mem => mem.id === m.memberId);
+    const percentage = totalGroupEUR > 0 ? (m.owedEUR / totalGroupEUR) * 100 : 0;
+    return { ...m, memberInfo, percentage };
+  });
 
   return (
     <div className="space-y-5 pb-24 max-w-xl mx-auto px-4 py-4 animate-in fade-in duration-200">
@@ -44,123 +35,147 @@ export function SummaryStats() {
       {/* Encabezado */}
       <div>
         <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-          <span>📊 Resumen y Estadísticas</span>
+          <span>📊 Control de Gastos</span>
         </h2>
-        <p className="text-xs text-slate-400">Visión consolidada del gasto en Euros (€)</p>
+        <p className="text-xs text-slate-400">Totales consumidos a nivel familiar e individual en Euros (€)</p>
       </div>
 
-      {/* KPI Cards Principal */}
-      <div className="grid grid-cols-2 gap-3">
-        {/* Total Grupo */}
-        <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800 p-4 rounded-2xl shadow-xl space-y-1">
-          <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
-            <span>Total Grupo (8 pax)</span>
-            <Wallet className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-2xl font-black text-slate-100">{formatEUR(totalEUR)}</div>
-          <div className="text-[11px] font-bold text-amber-400">
-            {formatJPY(totalJPY)} (@ {exchangeRate}¥)
-          </div>
+      {/* KPI Principal Total Grupo */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800 p-4.5 rounded-3xl shadow-xl flex items-center justify-between">
+        <div className="space-y-1">
+          <span className="text-xs font-semibold text-slate-400 block uppercase tracking-wider">Gasto Total Acumulado</span>
+          <div className="text-3xl font-black text-slate-100">{formatEUR(totalGroupEUR)}</div>
         </div>
-
-        {/* Total Familia Principal */}
-        <div className="bg-gradient-to-br from-emerald-950/40 via-slate-900 to-slate-950 border border-emerald-500/30 p-4 rounded-2xl shadow-xl space-y-1">
-          <div className="flex items-center justify-between text-emerald-400 text-xs font-semibold">
-            <span>Consumo Mi Familia (4)</span>
-            <span>👨‍👩‍👧‍👦</span>
-          </div>
-          <div className="text-2xl font-black text-emerald-300">
-            {formatEUR(familyStats.totalFamilyShareEUR)}
-          </div>
-          <div className="text-[11px] text-slate-400">
-            {(totalEUR > 0 ? ((familyStats.totalFamilyShareEUR / totalEUR) * 100).toFixed(1) : 0)}% del total del grupo
-          </div>
+        <div className="text-right">
+          <span className="text-xs font-extrabold text-amber-400 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20 block">
+            {formatJPY(totalGroupJPY)}
+          </span>
+          <span className="text-[10px] text-slate-500 block mt-1">@ 1€ = {exchangeRate}¥</span>
         </div>
       </div>
 
-      {/* Gasto por Categoría */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
-        <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-          <span>Gasto por Categoría</span>
-          <PieChart className="w-4 h-4 text-red-400" />
-        </h3>
-
-        <div className="space-y-3 pt-1">
-          {categoryTotals.map(cat => (
-            <div key={cat.id} className="space-y-1">
-              <div className="flex items-center justify-between text-xs font-medium">
-                <span className="flex items-center gap-1.5 text-slate-200">
-                  <span className="text-base">{cat.icon}</span>
-                  <span>{cat.name}</span>
-                </span>
-                <div className="text-right">
-                  <span className="font-bold text-slate-100">{formatEUR(cat.sumEUR)}</span>
-                  <span className="text-[10px] text-slate-500 ml-1.5">({cat.percentage.toFixed(1)}%)</span>
-                </div>
-              </div>
-
-              {/* Barra de progreso */}
-              <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden border border-slate-800/60">
-                <div
-                  className="h-full bg-gradient-to-r from-red-500 to-amber-500 transition-all duration-500"
-                  style={{ width: `${Math.min(cat.percentage, 100)}%` }}
-                ></div>
-              </div>
-            </div>
-          ))}
-        </div>
+      {/* Selector Claro: Por Familia vs Por Integrante */}
+      <div className="bg-slate-900 p-1.5 rounded-2xl border border-slate-800 flex gap-1">
+        <button
+          onClick={() => setViewTab('family')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+            viewTab === 'family'
+              ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>🏠 Gastos por Familia</span>
+        </button>
+        <button
+          onClick={() => setViewTab('individual')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+            viewTab === 'individual'
+              ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
+              : 'text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <User className="w-4 h-4" />
+          <span>👤 Gastos Individuales</span>
+        </button>
       </div>
 
-      {/* Gasto Consumido por Unidad Económica */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
-        <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-          Reparto del Gasto por Unidad Familiar
-        </h3>
-
+      {/* 1. SECCIÓN FAMILIAR */}
+      {viewTab === 'family' && (
         <div className="space-y-3">
-          {unitStats.map(u => (
-            <div key={u.unitId} className="space-y-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-200">{u.unitName}</span>
-                <span className="font-black text-slate-100">
-                  {formatEUR(u.owedEUR)} <span className="text-[10px] text-slate-500 font-normal">({u.percentage.toFixed(1)}%)</span>
-                </span>
-              </div>
-              <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1">
+            Consumo total por unidad familiar (3 familias)
+          </div>
+
+          <div className="space-y-2.5">
+            {familyStatsList.map(item => {
+              const isMyFamily = activeUnit?.id === item.unitId;
+              return (
                 <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{
-                    width: `${Math.min(u.percentage, 100)}%`,
-                    backgroundColor: u.unitInfo?.colorHex || '#3B82F6'
-                  }}
-                ></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+                  key={item.unitId}
+                  className={`bg-slate-900/90 border p-4 rounded-2xl space-y-2 shadow-lg transition ${
+                    isMyFamily
+                      ? 'border-emerald-500/50 bg-emerald-950/10 ring-1 ring-emerald-500/30'
+                      : 'border-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-3 h-3 rounded-full bg-${item.unitInfo?.color || 'slate'}-500`}></span>
+                      <h3 className="font-bold text-slate-100 text-sm flex items-center gap-1.5">
+                        <span>{item.unitName}</span>
+                        {isMyFamily && (
+                          <span className="text-[10px] bg-emerald-500/20 text-emerald-400 font-bold px-2 py-0.5 rounded-md border border-emerald-500/30">
+                            Tu Familia
+                          </span>
+                        )}
+                      </h3>
+                    </div>
 
-      {/* Ratio por Método de Pago */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-3 shadow-md">
-        <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-          Métodos de Pago Utilizados
-        </h3>
+                    <div className="text-right">
+                      <span className="text-base font-black text-slate-100">{formatEUR(item.owedEUR)}</span>
+                    </div>
+                  </div>
 
-        <div className="grid grid-cols-3 gap-2 text-center">
-          <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-0.5">
-            <span className="text-xs text-amber-400 font-bold block">💴 Efectivo Yenes</span>
-            <span className="text-sm font-black text-slate-100">{formatEUR(paymentStats.cash_jpy)}</span>
-          </div>
-          <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-0.5">
-            <span className="text-xs text-blue-400 font-bold block">💳 Tarjetas</span>
-            <span className="text-sm font-black text-slate-100">{formatEUR(paymentStats.card)}</span>
-          </div>
-          <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 space-y-0.5">
-            <span className="text-xs text-emerald-400 font-bold block">💶 Efectivo Euros</span>
-            <span className="text-sm font-black text-slate-100">{formatEUR(paymentStats.cash_eur)}</span>
+                  {/* Barra de Proporción */}
+                  <div className="space-y-1">
+                    <div className="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.min(item.percentage, 100)}%`,
+                          backgroundColor: item.unitInfo?.colorHex || '#3B82F6'
+                        }}
+                      ></div>
+                    </div>
+                    <div className="text-[10px] text-slate-400 text-right font-medium">
+                      Representa el {item.percentage.toFixed(1)}% del gasto del grupo
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-      </div>
+      )}
+
+      {/* 2. SECCIÓN INDIVIDUAL */}
+      {viewTab === 'individual' && (
+        <div className="space-y-3">
+          <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1">
+            Consumo total por integrante (8 personas)
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            {memberStatsList.map(item => {
+              const isMe = currentMemberId === item.memberId;
+              return (
+                <div
+                  key={item.memberId}
+                  className={`bg-slate-900/90 border p-3.5 rounded-2xl space-y-1 shadow-md transition ${
+                    isMe
+                      ? 'border-emerald-500/50 bg-emerald-950/20 ring-1 ring-emerald-500/30'
+                      : 'border-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">{item.memberInfo?.avatar}</span>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-slate-100 text-xs truncate flex items-center gap-1">
+                        <span>{item.memberName}</span>
+                        {isMe && <span className="text-[9px] text-emerald-400 font-bold">(Tú)</span>}
+                      </h4>
+                      <span className="text-[10px] font-black text-emerald-400 block pt-0.5">
+                        {formatEUR(item.owedEUR)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
     </div>
   );

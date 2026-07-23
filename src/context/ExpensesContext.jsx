@@ -6,12 +6,10 @@ import { initFirebase, dbRef, onValue, dbSet } from '../firebase/config';
 const ExpensesContext = createContext();
 
 export function ExpensesProvider({ children }) {
-  // Cargar perfil activo
   const [currentMemberId, setCurrentMemberIdState] = useState(() => {
     return localStorage.getItem('japon_current_member_id') || null;
   });
 
-  // Mapa de PINs por integrante { m1: "hash...", m2: "hash..." }
   const [memberPins, setMemberPins] = useState(() => {
     const saved = localStorage.getItem('japon_member_pins');
     return saved ? JSON.parse(saved) : {};
@@ -32,15 +30,13 @@ export function ExpensesProvider({ children }) {
 
   const [isFirebaseConnected, setIsFirebaseConnected] = useState(false);
   const [filterFamilyOnly, setFilterFamilyOnly] = useState(false);
-  const [activeTab, setActiveTab] = useState('history');
+  const [activeTab, setActiveTab] = useState('add'); // Pestaña por defecto: Añadir Gasto
 
-  // Inicializar Firebase si está configurado
   useEffect(() => {
     const { isConfigured, database } = initFirebase();
     if (isConfigured && database) {
       setIsFirebaseConnected(true);
 
-      // Escuchar PINs en tiempo real
       const pinsRef = dbRef(database, 'pins');
       onValue(pinsRef, (snapshot) => {
         const data = snapshot.val();
@@ -50,7 +46,6 @@ export function ExpensesProvider({ children }) {
         }
       });
 
-      // Escuchar Gastos en tiempo real
       const expensesRef = dbRef(database, 'expenses');
       onValue(expensesRef, (snapshot) => {
         const data = snapshot.val();
@@ -63,7 +58,6 @@ export function ExpensesProvider({ children }) {
     }
   }, []);
 
-  // Persistir en LocalStorage
   useEffect(() => {
     if (currentMemberId) {
       localStorage.setItem('japon_current_member_id', currentMemberId);
@@ -84,7 +78,6 @@ export function ExpensesProvider({ children }) {
     localStorage.setItem('japon_expenses', JSON.stringify(expenses));
   }, [expenses]);
 
-  // Funciones de gestión de sesión y PIN
   const setCurrentMemberId = (mId) => {
     setCurrentMemberIdState(mId);
   };
@@ -103,7 +96,6 @@ export function ExpensesProvider({ children }) {
     }
   };
 
-  // Funciones de modificación de gastos
   const setExchangeRate = (newRate) => {
     const rate = parseFloat(newRate);
     if (!isNaN(rate) && rate > 0) {
@@ -131,7 +123,7 @@ export function ExpensesProvider({ children }) {
       amountEUR: Number(amountEUR.toFixed(2)),
       exchangeRateUsed: expenseData.currency === 'JPY' ? (expenseData.exchangeRateUsed || exchangeRate) : exchangeRate,
       date: expenseData.date || new Date().toISOString(),
-      visibility: expenseData.visibility || 'public', // 'public' | 'family' | 'private'
+      visibility: expenseData.visibility || 'public',
       createdBy: currentMemberId || expenseData.payerId,
       createdUnitId: currentMember?.unitId || 'u1'
     };
@@ -182,7 +174,7 @@ export function ExpensesProvider({ children }) {
       beneficiaries: beneficiaries,
       isSettlement: true,
       notes: notes,
-      visibility: 'public', // Las liquidaciones de deudas son públicas para que cuadren los saldos
+      visibility: 'public',
       createdBy: currentMemberId || payerId,
       createdUnitId: currentMember?.unitId || 'u1'
     };
@@ -206,10 +198,6 @@ export function ExpensesProvider({ children }) {
     setCurrentMemberIdState(null);
   };
 
-  // FILTRADO ESTRICTO DE VISIBILIDAD DE GASTOS
-  // 1. Público: Visible para todos (8 pax)
-  // 2. Familiar: Visible solo si el creador o pagador pertenece a la misma Unidad Económica que el usuario activo
-  // 3. Privado: Visible exclusivamente si el usuario activo es el creador o pagador
   const activeMember = members.find(m => m.id === currentMemberId);
   const activeUnitId = activeMember?.unitId || 'u1';
 
@@ -229,7 +217,6 @@ export function ExpensesProvider({ children }) {
       return creatorUnitId === activeUnitId || payerUnitId === activeUnitId;
     }
 
-    // Public
     return true;
   });
 
@@ -244,7 +231,7 @@ export function ExpensesProvider({ children }) {
       setMemberPin,
       exchangeRate,
       setExchangeRate,
-      expenses: visibleExpenses, // Pasa únicamente los gastos visibles según la privacidad del perfil
+      expenses: visibleExpenses,
       allRawExpenses: expenses,
       addExpense,
       deleteExpense,
