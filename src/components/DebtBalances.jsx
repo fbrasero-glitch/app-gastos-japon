@@ -2,29 +2,21 @@ import React, { useState } from 'react';
 import { useExpenses } from '../context/ExpensesContext';
 import { calculateBalances, simplifyDebts } from '../utils/debtCalculator';
 import { formatEUR } from '../utils/currency';
-import { Scale, ArrowRight, CheckCircle2, Building2, User, Handshake, Sparkles, History, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Handshake, Sparkles, History, ChevronDown, ChevronUp, Building2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 export function DebtBalances() {
   const { expenses, members, units, exchangeRate, settleDebt } = useExpenses();
-  const [viewLevel, setViewLevel] = useState('units'); // 'units' | 'members'
   const [showHistory, setShowHistory] = useState(false);
   const [successMessage, setSuccessMessage] = useState(null);
 
-  // IMPORTANTE: Pasamos TODOS los gastos (incluidas las liquidaciones/pagos saldados)
-  // para que cualquier pago individual reste o sume de forma matemáticamente exacta
-  // en los balances de cada integrante y en el balance de su unidad familiar.
-  const { memberBalances, unitBalances } = calculateBalances(expenses, members, units, exchangeRate);
+  // Calcular saldos unificados por Unidad Económica
+  const { unitBalances } = calculateBalances(expenses, members, units, exchangeRate);
 
-  // Entidades a simplificar según el nivel seleccionado (Familia vs Integrante)
-  const entitiesToSimplify = viewLevel === 'units'
-    ? Object.values(unitBalances).map(u => ({ id: u.unitId, name: u.unitName, netEUR: u.netEUR }))
-    : Object.values(memberBalances).map(m => ({ id: m.memberId, name: m.memberName, netEUR: m.netEUR }));
+  // Deudas pendientes entre Unidades Económicas (Cajas principales)
+  const pendingDebts = simplifyDebts(unitBalances);
 
-  // Algoritmo de simplificación de deudas pendientes
-  const pendingDebts = simplifyDebts(entitiesToSimplify);
-
-  // Lista de pagos saldados registrados previamente
+  // Historial de pagos saldados
   const settledHistory = expenses.filter(exp => exp.isSettlement);
 
   const handleSettle = (debt) => {
@@ -32,15 +24,15 @@ export function DebtBalances() {
       fromId: debt.fromId,
       toId: debt.toId,
       amountEUR: debt.amountEUR,
-      isUnitLevel: viewLevel === 'units',
+      isUnitLevel: true,
       notes: `${debt.fromName} saldó cuenta con ${debt.toName}`
     });
 
     try {
-      confetti({ particleCount: 70, spread: 60, origin: { y: 0.7 } });
+      confetti({ particleCount: 75, spread: 60, origin: { y: 0.7 } });
     } catch (e) {}
 
-    setSuccessMessage(`¡Liquidación registrada! ${debt.fromName} ha pagado ${formatEUR(debt.amountEUR)} a ${debt.toName}. El importe se ha restado del balance familiar correspondiente.`);
+    setSuccessMessage(`¡Liquidación completada! ${debt.fromName} ha pagado ${formatEUR(debt.amountEUR)} a ${debt.toName}.`);
     setTimeout(() => setSuccessMessage(null), 4000);
   };
 
@@ -53,10 +45,10 @@ export function DebtBalances() {
       {/* Encabezado */}
       <div>
         <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
-          <span>⚖️ Cuentas Pendientes y Liquidación</span>
+          <span>⚖️ Cuentas Pendientes</span>
         </h2>
         <p className="text-xs text-slate-400">
-          Los pagos saldados individuales se restan automáticamente del balance familiar
+          Liquidación de deudas entre las 3 Unidades Económicas
         </p>
       </div>
 
@@ -68,45 +60,36 @@ export function DebtBalances() {
         </div>
       )}
 
-      {/* Selector simple: Por Familia vs Por Integrante */}
-      <div className="bg-slate-900 p-1.5 rounded-2xl border border-slate-800 flex gap-1">
-        <button
-          onClick={() => setViewLevel('units')}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-            viewLevel === 'units'
-              ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Building2 className="w-4 h-4" />
-          <span>Por Familia / Unidad</span>
-        </button>
-        <button
-          onClick={() => setViewLevel('members')}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all ${
-            viewLevel === 'members'
-              ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
-              : 'text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <User className="w-4 h-4" />
-          <span>Por Integrante Individual</span>
-        </button>
+      {/* Tarjetas de Saldo Neto por Unidad Económica */}
+      <div className="grid grid-cols-3 gap-2">
+        {Object.values(unitBalances).map(u => {
+          const isCreditor = u.netEUR >= 0;
+          return (
+            <div key={u.unitId} className="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-center space-y-0.5">
+              <span className="text-[11px] font-bold text-slate-300 block truncate">{u.unitName.split(' ')[0]}</span>
+              <span className={`text-xs font-black inline-block px-1.5 py-0.5 rounded border ${
+                isCreditor ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'
+              }`}>
+                {isCreditor ? `+${formatEUR(u.netEUR)}` : formatEUR(u.netEUR)}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
-      {/* LISTA DE DEUDAS PENDIENTES */}
+      {/* LISTA UNIFICADA DE DEUDAS PENDIENTES */}
       {pendingDebts.length === 0 ? (
         <div className="text-center py-10 bg-slate-900/60 border border-slate-800 rounded-3xl p-8 space-y-3 shadow-xl">
           <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto" />
-          <h3 className="text-base font-black text-slate-100">¡Cuentas saldadas al 100%! 🎉</h3>
+          <h3 className="text-base font-black text-slate-100">¡Todas las cuentas están saldadas al 100%! 🎉</h3>
           <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
-            No hay deudas pendientes en este nivel. Todos los saldos individuales y familiares se encuentran ajustados.
+            No hay deudas pendientes entre las unidades familiares. Al introducir nuevos gastos compartidos, las cuentas se calcularán automáticamente aquí.
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider px-1">
-            {pendingDebts.length} {pendingDebts.length === 1 ? 'cuenta pendiente' : 'cuentas pendientes'}
+            {pendingDebts.length} {pendingDebts.length === 1 ? 'cuenta pendiente por saldar' : 'cuentas pendientes por saldar'}
           </div>
 
           {pendingDebts.map((debt, idx) => (
@@ -143,7 +126,7 @@ export function DebtBalances() {
         </div>
       )}
 
-      {/* HISTORIAL DESPLEGABLE DE PAGOS SALDADOS (No se eliminan, quedan registrados) */}
+      {/* HISTORIAL DESPLEGABLE DE PAGOS SALDADOS */}
       {settledHistory.length > 0 && (
         <div className="pt-2">
           <button
@@ -166,7 +149,7 @@ export function DebtBalances() {
                     <div>
                       <span className="font-bold text-slate-200 block">{settle.notes || settle.title}</span>
                       <span className="text-[10px] text-slate-500">
-                        {new Date(settle.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} · Pagado por {getMemberAvatar(settle.payerId)} {getMemberName(settle.payerId)}
+                        {new Date(settle.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} · Registrado por {getMemberAvatar(settle.payerId)} {getMemberName(settle.payerId)}
                       </span>
                     </div>
                   </div>

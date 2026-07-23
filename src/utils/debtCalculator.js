@@ -3,73 +3,24 @@
 import { convertJPYToEUR } from './currency';
 
 /**
- * Calcula los balances netos (pagado, consumido y balance final) para cada integrante y unidad económica.
- * Maneja correctamente la diferencia entre Gastos del Viaje y Transferencias de Liquidación.
+ * Calcula los balances de consumo y los balances financieros netos por integrante y unidad económica.
+ * Cada Unidad Económica actúa como una caja/billetera única.
  */
 export function calculateBalances(expenses, members, units, currentExchangeRate = 165.0) {
-  // Inicializar mapas de integrantes
+  // Inicializar mapa de integrantes
   const memberBalances = {};
   members.forEach(m => {
     memberBalances[m.id] = {
       memberId: m.id,
       memberName: m.name,
       unitId: m.unitId,
-      paidEUR: 0,  // Total desembolsado de su bolsillo
-      owedEUR: 0,  // Total consumido en gastos del viaje
-      netEUR: 0    // Balance final (Pagado - Consumido)
+      paidEUR: 0,  // Desembolsado de su bolsillo
+      owedEUR: 0,  // Consumido individualmente en el viaje
+      netEUR: 0
     };
   });
 
-  // Procesar cada registro
-  expenses.forEach(exp => {
-    let expEUR = exp.amountEUR;
-    if (!expEUR || expEUR <= 0) {
-      if (exp.currency === 'JPY') {
-        expEUR = convertJPYToEUR(exp.amountOriginal, exp.exchangeRateUsed || currentExchangeRate);
-      } else {
-        expEUR = Number(exp.amountOriginal) || 0;
-      }
-    }
-
-    const payerId = exp.payerId;
-    const beneficiaries = exp.beneficiaries || [];
-
-    if (exp.isSettlement) {
-      // LIQUIDACIÓN (Transferencia entre personas para saldar deuda)
-      // El pagador desembolsa dinero para saldar deudas
-      if (memberBalances[payerId]) {
-        memberBalances[payerId].paidEUR += expEUR;
-      }
-      // El receptor disminuye su crédito (o se le descuenta de su desembolso neto)
-      const recipientId = beneficiaries[0];
-      if (recipientId && memberBalances[recipientId]) {
-        memberBalances[recipientId].paidEUR -= expEUR;
-      }
-    } else {
-      // GASTO REAL DEL VIAJE (Comida, Tren, Hotel, etc.)
-      if (memberBalances[payerId]) {
-        memberBalances[payerId].paidEUR += expEUR;
-      }
-
-      if (beneficiaries.length > 0) {
-        const shareEUR = expEUR / beneficiaries.length;
-        beneficiaries.forEach(bId => {
-          if (memberBalances[bId]) {
-            memberBalances[bId].owedEUR += shareEUR;
-          }
-        });
-      }
-    }
-  });
-
-  // Calcular balance neto por integrante
-  Object.values(memberBalances).forEach(m => {
-    m.netEUR = Number((m.paidEUR - m.owedEUR).toFixed(2));
-    m.paidEUR = Number(m.paidEUR.toFixed(2));
-    m.owedEUR = Number(m.owedEUR.toFixed(2));
-  });
-
-  // Consolidar balances por Unidad Económica
+  // Inicializar mapa de unidades económicas (familias)
   const unitBalances = {};
   units.forEach(u => {
     unitBalances[u.id] = {
@@ -82,18 +33,78 @@ export function calculateBalances(expenses, members, units, currentExchangeRate 
     };
   });
 
-  Object.values(memberBalances).forEach(m => {
-    if (unitBalances[m.unitId]) {
-      unitBalances[m.unitId].paidEUR += m.paidEUR;
-      unitBalances[m.unitId].owedEUR += m.owedEUR;
-      unitBalances[m.unitId].netEUR += m.netEUR;
+  // Procesar cada gasto o liquidación
+  expenses.forEach(exp => {
+    let expEUR = exp.amountEUR;
+    if (!expEUR || expEUR <= 0) {
+      if (exp.currency === 'JPY') {
+        expEUR = convertJPYToEUR(exp.amountOriginal, exp.exchangeRateUsed || currentExchangeRate);
+      } else {
+        expEUR = Number(exp.amountOriginal) || 0;
+      }
+    }
+
+    const payerId = exp.payerId;
+    const beneficiaries = exp.beneficiaries || [];
+    const payerMember = members.find(m => m.id === payerId);
+    const payerUnitId = payerMember?.unitId || exp.createdUnitId;
+
+    if (exp.isSettlement) {
+      // LIQUIDACIÓN DE DEUDA ENTRE UNIDADES
+      // El pagador desembolsa dinero para saldar la deuda de su unidad
+      if (memberBalances[payerId]) {
+        memberBalances[payerId].paidEUR += expEUR;
+      }
+      if (payerUnitId && unitBalances[payerUnitId]) {
+        unitBalances[payerUnitId].paidEUR += expEUR;
+      }
+
+      // El receptor (o la unidad receptora) recibe el dinero
+      const recipientId = beneficiaries[0];
+      const recipientMember = members.find(m => m.id === recipientId);
+      const recipientUnitId = recipientMember?.unitId;
+
+      if (recipientId && memberBalances[recipientId]) {
+        memberBalances[recipientId].paidEUR -= expEUR;
+      }
+      if (recipientUnitId && unitBalances[recipientUnitId]) {
+        unitBalances[recipientUnitId].paidEUR -= expEUR;
+      }
+    } else {
+      // GASTO REAL DEL VIAJE
+      if (memberBalances[payerId]) {
+        memberBalances[payerId].paidEUR += expEUR;
+      }
+      if (payerUnitId && unitBalances[payerUnitId]) {
+        unitBalances[payerUnitId].paidEUR += expEUR;
+      }
+
+      if (beneficiaries.length > 0) {
+        const shareEUR = expEUR / beneficiaries.length;
+        beneficiaries.forEach(bId => {
+          if (memberBalances[bId]) {
+            memberBalances[bId].owedEUR += shareEUR;
+          }
+          const bMember = members.find(m => m.id === bId);
+          if (bMember?.unitId && unitBalances[bMember.unitId]) {
+            unitBalances[bMember.unitId].owedEUR += shareEUR;
+          }
+        });
+      }
     }
   });
 
+  // Calcular balance neto por integrante y unidad
+  Object.values(memberBalances).forEach(m => {
+    m.netEUR = Number((m.paidEUR - m.owedEUR).toFixed(2));
+    m.paidEUR = Number(m.paidEUR.toFixed(2));
+    m.owedEUR = Number(m.owedEUR.toFixed(2));
+  });
+
   Object.values(unitBalances).forEach(u => {
+    u.netEUR = Number((u.paidEUR - u.owedEUR).toFixed(2));
     u.paidEUR = Number(u.paidEUR.toFixed(2));
     u.owedEUR = Number(u.owedEUR.toFixed(2));
-    u.netEUR = Number(u.netEUR.toFixed(2));
   });
 
   return {
@@ -103,19 +114,19 @@ export function calculateBalances(expenses, members, units, currentExchangeRate 
 }
 
 /**
- * Algoritmo Greedy de simplificación de deudas para minimizar las transferencias.
- * Funciona tanto a nivel de integrantes como de unidades familiares.
+ * Algoritmo Greedy de simplificación de deudas entre Unidades Económicas.
+ * Las deudas de liquidación se realizan a nivel de Unidad Económica (Caja única).
  */
-export function simplifyDebts(entities) {
+export function simplifyDebts(unitBalancesMap) {
   const debtors = [];
   const creditors = [];
 
-  entities.forEach(ent => {
-    const balance = Math.round(ent.netEUR * 100) / 100;
+  Object.values(unitBalancesMap).forEach(u => {
+    const balance = Math.round(u.netEUR * 100) / 100;
     if (balance < -0.01) {
-      debtors.push({ id: ent.id, name: ent.name, balance: Math.abs(balance) });
+      debtors.push({ id: u.unitId, name: u.unitName, balance: Math.abs(balance) });
     } else if (balance > 0.01) {
-      creditors.push({ id: ent.id, name: ent.name, balance: balance });
+      creditors.push({ id: u.unitId, name: u.unitName, balance: balance });
     }
   });
 
@@ -151,36 +162,4 @@ export function simplifyDebts(entities) {
   }
 
   return settlements;
-}
-
-/**
- * Calcula estadísticas de gasto para una familia
- */
-export function calculateFamilyStats(expenses, familyUnitId = "u1", members = []) {
-  const familyMemberIds = members.filter(m => m.unitId === familyUnitId).map(m => m.id);
-  
-  let totalDirectSpentEUR = 0;
-  let totalFamilyShareEUR = 0;
-
-  expenses.forEach(exp => {
-    if (exp.isSettlement) return; // No contar transferencias como gasto real del viaje
-
-    const expEUR = exp.amountEUR || 0;
-    
-    if (familyMemberIds.includes(exp.payerId)) {
-      totalDirectSpentEUR += expEUR;
-    }
-
-    const beneficiaries = exp.beneficiaries || [];
-    if (beneficiaries.length > 0) {
-      const perPerson = expEUR / beneficiaries.length;
-      const familyBeneficiariesCount = beneficiaries.filter(bId => familyMemberIds.includes(bId)).length;
-      totalFamilyShareEUR += perPerson * familyBeneficiariesCount;
-    }
-  });
-
-  return {
-    totalDirectSpentEUR: Number(totalDirectSpentEUR.toFixed(2)),
-    totalFamilyShareEUR: Number(totalFamilyShareEUR.toFixed(2))
-  };
 }
